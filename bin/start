@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+
+cd "$ROOT_DIR"
+
+echo "Starting Notification System..."
+
+docker compose up -d --build
+
+echo "Composer install started"
+docker compose exec php composer install
+echo "Composer install done."
+
+echo "Done. App running at http://localhost:8080"
+echo "RabbitMQ UI: http://localhost:15672 (notification_user / notification_pass)"
