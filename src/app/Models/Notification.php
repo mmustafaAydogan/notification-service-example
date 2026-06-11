@@ -13,10 +13,6 @@ class Notification extends Model
 {
     use HasUuids;
 
-    const PRIORITY_HIGH   = 10;
-    const PRIORITY_NORMAL = 5;
-    const PRIORITY_LOW    = 1;
-
     protected $fillable = [
         'batch_id',
         'idempotency_key',
@@ -24,6 +20,10 @@ class Notification extends Model
         'priority',
         'status',
         'scheduled_at',
+        'sent_at',
+        'provider_message_id',
+        'last_error',
+        'attempts',
     ];
 
     protected $casts = [

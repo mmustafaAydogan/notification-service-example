@@ -14,6 +14,10 @@ return [
     |
     */
 
+    'webhook_site' => [
+        'url' => env('WEBHOOK_SITE_URL'),
+    ],
+
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
     ],
