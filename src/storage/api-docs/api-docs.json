@@ -196,6 +196,41 @@
                                                 }
                                             },
                                             "type": "object"
+                                        },
+                                        "queue": {
+                                            "properties": {
+                                                "driver": {
+                                                    "type": "string",
+                                                    "example": "rabbitmq"
+                                                },
+                                                "name": {
+                                                    "type": "string",
+                                                    "example": "notifications"
+                                                },
+                                                "depth": {
+                                                    "description": "Pending message count; null if depth cannot be read",
+                                                    "type": "integer",
+                                                    "example": 42,
+                                                    "nullable": true
+                                                }
+                                            },
+                                            "type": "object"
+                                        },
+                                        "latency": {
+                                            "description": "End-to-end seconds between created_at and sent_at for status=sent",
+                                            "properties": {
+                                                "avg_seconds": {
+                                                    "type": "number",
+                                                    "format": "float",
+                                                    "example": 3.21,
+                                                    "nullable": true
+                                                },
+                                                "sample_size": {
+                                                    "type": "integer",
+                                                    "example": 1000
+                                                }
+                                            },
+                                            "type": "object"
                                         }
                                     },
                                     "type": "object"
@@ -842,6 +877,95 @@
                 },
                 "type": "object"
             },
+            "NotificationSummary": {
+                "description": "Lightweight notification representation used in list responses. Use GET /notifications/{id} for the channel-specific `detail` payload.",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "channel": {
+                        "$ref": "#/components/schemas/NotificationChannel"
+                    },
+                    "priority": {
+                        "type": "string",
+                        "example": "Medium",
+                        "enum": [
+                            "Low",
+                            "Medium",
+                            "High"
+                        ]
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/NotificationStatus"
+                    },
+                    "batch_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "provider_message_id": {
+                        "type": "string",
+                        "example": "twilio_SMxxxx",
+                        "nullable": true
+                    },
+                    "attempts": {
+                        "type": "integer",
+                        "example": 0
+                    },
+                    "scheduled_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "sent_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                },
+                "type": "object"
+            },
+            "NotificationCollection": {
+                "properties": {
+                    "data": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/NotificationSummary"
+                        }
+                    },
+                    "meta": {
+                        "properties": {
+                            "current_page": {
+                                "type": "integer"
+                            },
+                            "from": {
+                                "type": "integer",
+                                "nullable": true
+                            },
+                            "last_page": {
+                                "type": "integer"
+                            },
+                            "per_page": {
+                                "type": "integer"
+                            },
+                            "to": {
+                                "type": "integer",
+                                "nullable": true
+                            },
+                            "total": {
+                                "type": "integer"
+                            }
+                        },
+                        "type": "object"
+                    }
+                },
+                "type": "object"
+            },
             "NotificationResource": {
                 "properties": {
                     "id": {
@@ -892,9 +1016,8 @@
                         "format": "date-time"
                     },
                     "detail": {
-                        "description": "Channel-specific payload. Shape depends on `channel`.",
+                        "description": "Channel-specific payload. Shape depends on `channel`. Omitted when relation is not eager-loaded (e.g. index endpoint).",
                         "type": "object",
-                        "nullable": true,
                         "oneOf": [
                             {
                                 "title": "SmsDetail",
@@ -940,63 +1063,6 @@
                                 "type": "object"
                             }
                         ]
-                    }
-                },
-                "type": "object"
-            },
-            "NotificationCollection": {
-                "properties": {
-                    "data": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/NotificationResource"
-                        }
-                    },
-                    "links": {
-                        "properties": {
-                            "first": {
-                                "type": "string",
-                                "nullable": true
-                            },
-                            "last": {
-                                "type": "string",
-                                "nullable": true
-                            },
-                            "prev": {
-                                "type": "string",
-                                "nullable": true
-                            },
-                            "next": {
-                                "type": "string",
-                                "nullable": true
-                            }
-                        },
-                        "type": "object"
-                    },
-                    "meta": {
-                        "properties": {
-                            "current_page": {
-                                "type": "integer"
-                            },
-                            "from": {
-                                "type": "integer",
-                                "nullable": true
-                            },
-                            "last_page": {
-                                "type": "integer"
-                            },
-                            "per_page": {
-                                "type": "integer"
-                            },
-                            "to": {
-                                "type": "integer",
-                                "nullable": true
-                            },
-                            "total": {
-                                "type": "integer"
-                            }
-                        },
-                        "type": "object"
                     }
                 },
                 "type": "object"
@@ -1092,7 +1158,9 @@
                                     "type": "integer"
                                 },
                                 "reason": {
-                                    "type": "string"
+                                    "description": "Sentinel values: \"duplicate\" (idempotency hit), \"concurrent_write_conflict\" (race on bulk insert). Otherwise a validation error message.",
+                                    "type": "string",
+                                    "example": "duplicate"
                                 }
                             },
                             "type": "object"

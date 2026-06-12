@@ -19,10 +19,10 @@ enum PriorityStatus: string
 
     public static function fromInt(int $value): self
     {
-        return match ($value) {
-            1  => self::Low,
-            5  => self::Medium,
-            10 => self::High,
+        return match (true) {
+            $value >= 10 => self::High,
+            $value >= 5  => self::Medium,
+            default      => self::Low,
         };
     }
 }

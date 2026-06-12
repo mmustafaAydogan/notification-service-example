@@ -86,6 +86,11 @@ return [
                     'vhost' => env('RABBITMQ_VHOST', '/'),
                 ],
             ],
+            'management' => [
+                'scheme' => env('RABBITMQ_MANAGEMENT_SCHEME', 'http'),
+                'host'   => env('RABBITMQ_MANAGEMENT_HOST', env('RABBITMQ_HOST', 'rabbitmq')),
+                'port'   => env('RABBITMQ_MANAGEMENT_PORT', 15672),
+            ],
             'options' => [
                 'ssl_options' => [
                     'cafile' => env('RABBITMQ_SSL_CAFILE', null),
@@ -96,7 +101,7 @@ return [
                 ],
                 'queue' => [
                     'job' => VladimirYuldashev\LaravelQueueRabbitMQ\Queue\Jobs\RabbitMQJob::class,
-                    'prioritize_delayed' => false,
+                    'prioritize_delayed' => true,
                     'queue_max_priority' => 10,
                 ],
             ],

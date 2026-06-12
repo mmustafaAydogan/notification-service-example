@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\NotificationChannel;
 use App\Enums\PriorityStatus;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -22,9 +23,8 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'created_at', type: 'string', format: 'date-time'),
         new OA\Property(
             property   : 'detail',
-            description: 'Channel-specific payload. Shape depends on `channel`.',
+            description: 'Channel-specific payload. Shape depends on `channel`. Omitted when relation is not eager-loaded (e.g. index endpoint).',
             type       : 'object',
-            nullable   : true,
             oneOf      : [
                 new OA\Schema(
                     title     : 'SmsDetail',
@@ -50,35 +50,6 @@ use OpenApi\Attributes as OA;
                     ],
                 ),
             ],
-        ),
-    ],
-    type      : 'object',
-)]
-#[OA\Schema(
-    schema    : 'NotificationCollection',
-    properties: [
-        new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/NotificationResource')),
-        new OA\Property(
-            property  : 'links',
-            properties: [
-                new OA\Property(property: 'first', type: 'string', nullable: true),
-                new OA\Property(property: 'last', type: 'string', nullable: true),
-                new OA\Property(property: 'prev', type: 'string', nullable: true),
-                new OA\Property(property: 'next', type: 'string', nullable: true),
-            ],
-            type      : 'object',
-        ),
-        new OA\Property(
-            property  : 'meta',
-            properties: [
-                new OA\Property(property: 'current_page', type: 'integer'),
-                new OA\Property(property: 'from', type: 'integer', nullable: true),
-                new OA\Property(property: 'last_page', type: 'integer'),
-                new OA\Property(property: 'per_page', type: 'integer'),
-                new OA\Property(property: 'to', type: 'integer', nullable: true),
-                new OA\Property(property: 'total', type: 'integer'),
-            ],
-            type      : 'object',
         ),
     ],
     type      : 'object',
@@ -140,7 +111,7 @@ class NotificationResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        return [
+        $data = [
             'id'                  => $this->id,
             'channel'             => $this->channel,
             'priority'            => PriorityStatus::fromInt((int)$this->priority)->value,
@@ -151,28 +122,39 @@ class NotificationResource extends JsonResource
             'scheduled_at'        => $this->scheduled_at?->toIso8601String(),
             'sent_at'             => $this->sent_at?->toIso8601String(),
             'created_at'          => $this->created_at->toIso8601String(),
-            'detail'              => $this->resolveDetail(),
         ];
+
+        if (($detail = $this->resolveDetail()) !== null) {
+            $data['detail'] = $detail;
+        }
+
+        return $data;
     }
 
 
     private function resolveDetail(): ?array
     {
         return match ($this->channel) {
-            'sms' => $this->whenLoaded('smsNotification', fn() => [
-                'recipient' => $this->smsNotification->recipient,
-                'content'   => $this->smsNotification->content,
-            ]),
-            'email' => $this->whenLoaded('emailNotification', fn() => [
-                'recipient' => $this->emailNotification->recipient,
-                'subject'   => $this->emailNotification->subject,
-                'body'      => $this->emailNotification->body,
-            ]),
-            'push' => $this->whenLoaded('pushNotification', fn() => [
-                'device_token' => $this->pushNotification->device_token,
-                'title'        => $this->pushNotification->title,
-                'body'         => $this->pushNotification->body,
-            ]),
+            NotificationChannel::Sms => $this->relationLoaded('smsNotification') && $this->smsNotification
+                ? [
+                    'recipient' => $this->smsNotification->recipient,
+                    'content'   => $this->smsNotification->content,
+                ]
+                : null,
+            NotificationChannel::Email => $this->relationLoaded('emailNotification') && $this->emailNotification
+                ? [
+                    'recipient' => $this->emailNotification->recipient,
+                    'subject'   => $this->emailNotification->subject,
+                    'body'      => $this->emailNotification->body,
+                ]
+                : null,
+            NotificationChannel::Push => $this->relationLoaded('pushNotification') && $this->pushNotification
+                ? [
+                    'device_token' => $this->pushNotification->device_token,
+                    'title'        => $this->pushNotification->title,
+                    'body'         => $this->pushNotification->body,
+                ]
+                : null,
             default => null,
         };
     }

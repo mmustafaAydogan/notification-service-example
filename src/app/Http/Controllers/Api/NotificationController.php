@@ -9,13 +9,13 @@ use App\Http\Requests\Api\BulkNotificationRequest;
 use App\Http\Requests\Api\SendEmailNotificationRequest;
 use App\Http\Requests\Api\SendPushNotificationRequest;
 use App\Http\Requests\Api\SendSmsNotificationRequest;
+use App\Http\Resources\NotificationCollection;
 use App\Http\Resources\NotificationResource;
 use App\Models\Notification;
 use App\Services\BulkNotificationService;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use OpenApi\Attributes as OA;
 
 class NotificationController extends Controller
@@ -113,7 +113,7 @@ class NotificationController extends Controller
             new OA\Response(response: 200, description: 'OK', content: new OA\JsonContent(ref: '#/components/schemas/NotificationCollection')),
         ],
     )]
-    public function index(Request $request): AnonymousResourceCollection
+    public function index(Request $request): NotificationCollection
     {
         $query = Notification::query();
 
@@ -137,10 +137,10 @@ class NotificationController extends Controller
             $query->whereDate('created_at', '<=', $request->to);
         }
 
-        $perPage       = min((int) $request->input('per_page', 20), 100);
+        $perPage       = max(1, min((int) $request->input('per_page', 20), 100));
         $notifications = $query->orderByDesc('created_at')->paginate($perPage);
 
-        return NotificationResource::collection($notifications);
+        return new NotificationCollection($notifications);
     }
 
     #[OA\Get(

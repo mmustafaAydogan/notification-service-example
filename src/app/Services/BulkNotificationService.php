@@ -89,15 +89,19 @@ class BulkNotificationService
         $existing = Redis::mget($keys);
 
         $toInsert = [];
+        $seen     = [];
 
         foreach ($valid as $i => $v) {
-            if (!empty($existing[$i])) {
+            $key = $v['idempotency_key'];
+
+            if (!empty($existing[$i]) || isset($seen[$key])) {
                 $errors[] = ['index' => $v['index'], 'reason' => 'duplicate'];
                 continue;
             }
 
-            $v['notification_id'] = Str::uuid()->toString();
-            $toInsert[] = $v;
+            $seen[$key]            = true;
+            $v['notification_id']  = Str::uuid()->toString();
+            $toInsert[]            = $v;
         }
 
         return $toInsert;

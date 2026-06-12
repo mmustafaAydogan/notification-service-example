@@ -25,7 +25,7 @@ class EmailChannelHandler implements ChannelHandler
 
     public function idempotencyHash(array $data): string
     {
-        return md5(implode('|', [$data['recipient'], $data['body'], $this->channel()->value]));
+        return md5(implode('|', [$data['recipient'], $data['subject'], $data['body'], $this->channel()->value]));
     }
 
     public function persistDetail(string $notificationId, array $data): void
