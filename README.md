@@ -14,6 +14,7 @@ Built for the Insider One Software Engineer Assessment 2026.
 | Database         | MariaDB (LTS)                                    |
 | Cache / Idempotency | Redis                                         |
 | Message Broker   | RabbitMQ (with native priority queue)            |
+| Request Log Store | MongoDB 7 (incoming + outgoing request logs)    |
 | External Provider | webhook.site (simulated SMS / Email / Push gateway) |
 | API Documentation | Swagger / L5-Swagger                            |
 | Container Runtime | Docker Compose                                  |
@@ -90,11 +91,11 @@ If any dependency reports `unhealthy`, inspect `docker compose logs` for the fai
 ```
                        ┌────────────────────────────────────────────────┐
                        │                Laravel API                     │
-   HTTP request        │  FormRequest validation                        │
-   ─────────────────▶ │  → NotificationService / BulkNotificationService│
-                       │  → Idempotency check (Redis)                   │
-                       │  → DB insert (notifications + channel detail)  │
-                       │  → Dispatch ProcessNotificationJob (id only)   │
+   HTTP request        │ FormRequest validation                         │
+   ─────────────────▶  │ → NotificationService / BulkNotificationService│
+                       │ → Idempotency check (Redis)                    │
+                       │ → DB insert (notifications + channel detail)   │
+                       │ → Dispatch ProcessNotificationJob (id only)    │
                        └────────────────┬───────────────────────────────┘
                                         │
                                         ▼
@@ -117,13 +118,20 @@ If any dependency reports `unhealthy`, inspect `docker compose logs` for the fai
                        │  7. → `sent` / `failed` / retry (status reset) │
                        └────────────────────────────────────────────────┘
 
-      ┌─────────────────┐  ┌──────────────────┐  ┌────────────────────┐
-      │ Redis           │  │ MariaDB          │  │ webhook.site       │
-      │ - Idempotency   │  │ - Source of truth │  │ - External provider │
-      │ - Rate limiter  │  │ - notifications  │  │   (simulated)      │
-      │                 │  │ - sms / email /  │  │                    │
-      │                 │  │   push details   │  │                    │
-      └─────────────────┘  └──────────────────┘  └────────────────────┘
+      ┌─────────────────┐  ┌───────────────────┐  ┌────────────────────┐
+      │ Redis           │  │ MariaDB           │  │ webhook.site       │
+      │ - Idempotency   │  │ - Source of truth │  │ - External provider│
+      │ - Rate limiter  │  │ - notifications   │  │   (simulated)      │
+      │                 │  │ - sms / email /   │  │                    │
+      │                 │  │   push details    │  │                    │
+      └─────────────────┘  └───────────────────┘  └────────────────────┘
+
+      ┌──────────────────────────────────────────────────────────────┐
+      │ MongoDB                                                      │
+      │ - incoming_requests : every API call (request + response)    │
+      │ - outgoing_requests : every webhook.site call (req + resp)   │
+      │ - joined by `notification_id` / `batch_id`                   │
+      └──────────────────────────────────────────────────────────────┘
 ```
 
 ### Key design decisions
@@ -373,6 +381,59 @@ Returns aggregate counters and operational telemetry suitable for scraping or da
 
 ---
 
+## Request Logging
+
+Every API request and every webhook call is mirrored into MongoDB for after-the-fact inspection and debugging. Two separate collections live under the `notification_logs` database.
+
+### `incoming_requests`
+
+Written by the `LogRequests` middleware in the `terminate()` phase, so the user receives the HTTP response first and the log is persisted asynchronously after.
+
+| Field             | Notes                                                       |
+|-------------------|-------------------------------------------------------------|
+| `trace_id`        | `X-Request-Id` header (echoed back on the response), or a generated UUID |
+| `notification_id` | Extracted from response JSON (`id` / `existing_notification_id`) |
+| `batch_id`        | Extracted from response JSON (`batch_id`)                   |
+| `method`, `path`, `query` | HTTP request line                                   |
+| `headers`         | Sensitive headers (`Authorization`, `Cookie`, `X-Api-Key`, `X-Auth-Token`) redacted |
+| `request_body`    | Parsed JSON when possible, raw otherwise                    |
+| `status_code`     | HTTP status returned to the client                          |
+| `response_body`   | Same shape as `request_body`                                |
+| `latency_ms`      | Wall-clock time between request and response                |
+| `ip`, `user_agent` | Client identity signals                                    |
+| `logged_at`       | Timestamp                                                   |
+
+### `outgoing_requests`
+
+Written by `WebhookProvider` around the `Http::post()` call. The write happens in a `finally` block, so success, 4xx, 5xx, and timeout all produce a log entry.
+
+| Field             | Notes                                                       |
+|-------------------|-------------------------------------------------------------|
+| `notification_id` | Passed in by `ProcessNotificationJob`                       |
+| `channel`         | `sms` / `email` / `push`                                    |
+| `method`, `url`   | Outbound HTTP request line                                  |
+| `request_body`    | Payload sent to the provider                                |
+| `status_code`     | HTTP status returned by the provider; `null` on transport failure |
+| `response_body`   | Parsed JSON when possible, raw otherwise                    |
+| `latency_ms`      | Wall-clock time around the HTTP call                        |
+| `error`           | Exception message when the call failed; `null` on success   |
+| `logged_at`       | Timestamp                                                   |
+
+Both writes are fire-and-forget — a failed log entry is captured in the application log via `logger()->warning(...)` and does not affect the business flow.
+
+The two collections share `notification_id`, so a single notification can be traced end-to-end:
+
+```js
+// In mongosh, against the notification_logs DB
+const nid = "0a3b2f9c-...";
+db.incoming_requests.find({ notification_id: nid }).pretty();
+db.outgoing_requests.find({ notification_id: nid }).pretty();
+```
+
+For bulk endpoints, the same correlation works via `batch_id`.
+
+---
+
 ## Configuration
 
 The application is configured exclusively through environment variables. The most relevant ones:
@@ -387,6 +448,9 @@ The application is configured exclusively through environment variables. The mos
 | `RABBITMQ_LOGIN`, `RABBITMQ_PASSWORD`, `RABBITMQ_VHOST` | RabbitMQ credentials                       |
 | `RABBITMQ_QUEUE`                  | Queue name (default `notifications`)                          |
 | `RABBITMQ_MANAGEMENT_HOST`, `RABBITMQ_MANAGEMENT_PORT` | Management API endpoint used by `/api/metrics` |
+| `MONGO_HOST`, `MONGO_PORT`        | MongoDB connection used by the request log store              |
+| `MONGO_DATABASE`                  | Database holding `incoming_requests` and `outgoing_requests`  |
+| `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_AUTH_SOURCE` | MongoDB credentials (auth DB defaults to `admin`) |
 | `WEBHOOK_SITE_URL`                | Target URL for the external provider simulation              |
 
 `docker-compose.yml` exposes the dependent services on the host network as well:
@@ -398,6 +462,7 @@ The application is configured exclusively through environment variables. The mos
 | Redis       | 6379      | No auth (dev only)                       |
 | RabbitMQ    | 5672      | AMQP                                     |
 | RabbitMQ UI | 15672     | Management console                       |
+| MongoDB     | 27017     | `notification_user / notification_pass`, auth DB `admin` |
 
 ---
 
@@ -415,10 +480,11 @@ The application is configured exclusively through environment variables. The mos
     │   ├── Exceptions/                         # DuplicateNotificationException (HTTP 409)
     │   ├── Http/
     │   │   ├── Controllers/Api/                # Notification / Health / Metrics
+    │   │   ├── Middleware/                     # LogRequests (incoming request → MongoDB)
     │   │   ├── Requests/Api/                   # FormRequest validators (one per channel + bulk)
     │   │   └── Resources/                      # Notification / NotificationCollection
     │   ├── Jobs/                               # ProcessNotificationJob (id-only payload)
-    │   ├── Models/                             # Notification + channel detail models
+    │   ├── Models/                             # Notification + channel detail models + IncomingRequestLog / OutgoingRequestLog
     │   ├── Providers/                          # AppServiceProvider (handler tagging, rate limiters)
     │   └── Services/
     │       ├── NotificationService.php         # Single-channel ingestion

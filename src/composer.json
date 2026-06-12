@@ -10,6 +10,7 @@
         "darkaonline/l5-swagger": "^11.0",
         "laravel/framework": "^13.8",
         "laravel/tinker": "^3.0",
+        "mongodb/laravel-mongodb": "^5.8",
         "vladimir-yuldashev/laravel-queue-rabbitmq": "^15.0"
     },
     "require-dev": {

@@ -59,7 +59,7 @@ class ProcessNotificationJob implements ShouldQueue
             ->payloadFromNotification($notification);
 
         try {
-            $response = $provider->send($notification->channel, $payload);
+            $response = $provider->send($notification->channel, $payload, $notification->id);
             $notification->markAsSent($response->messageId);
         } catch (\RuntimeException $e) {
             if ($e->getCode() === 422) {
