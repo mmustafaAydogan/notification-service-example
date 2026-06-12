@@ -8,11 +8,25 @@ cd "$ROOT_DIR"
 
 echo "Starting Notification System..."
 
-docker compose up -d --build
+docker compose up -d --build --wait
 
-echo "Composer install started"
-docker compose exec php composer install
-echo "Composer install done."
+echo "Installing Composer dependencies..."
+docker compose exec -T php composer install --no-interaction --prefer-dist
 
-echo "Done. App running at http://localhost:8080"
-echo "RabbitMQ UI: http://localhost:15672 (notification_user / notification_pass)"
+APP_KEY_VAL=$(grep '^APP_KEY=' src/.env 2>/dev/null | sed 's/^APP_KEY=//')
+if [ -z "$APP_KEY_VAL" ]; then
+    echo "Generating APP_KEY..."
+    docker compose exec -T php php artisan key:generate --force
+fi
+
+echo "Running migrations..."
+docker compose exec -T php php artisan migrate --force
+
+echo "Generating API documentation..."
+docker compose exec -T php php artisan l5-swagger:generate
+
+echo ""
+echo "Done."
+echo "API:       http://localhost:8080"
+echo "API Docs:  http://localhost:8080/api/documentation"
+echo "RabbitMQ:  http://localhost:15672 (notification_user / notification_pass)"
