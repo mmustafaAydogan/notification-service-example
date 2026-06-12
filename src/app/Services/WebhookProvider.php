@@ -24,11 +24,9 @@ class WebhookProvider implements NotificationProvider
 
     public function send(NotificationChannel $channel, array $payload): ProviderResponse
     {
-        $response = Http::timeout(5)
-            ->post($this->webhookUrl, [
-                'channel' => $channel->value,
-                'payload' => $payload,
-            ]);
+        $body = array_merge($payload, ['channel' => $channel->value]);
+
+        $response = Http::timeout(5)->post($this->webhookUrl, $body);
 
         if ($response->status() === 422) {
             throw new \RuntimeException('Provider validation error: ' . $response->body(), 422);

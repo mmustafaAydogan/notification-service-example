@@ -3,14 +3,11 @@
 namespace App\Providers;
 
 use App\Contracts\NotificationProvider;
-use App\Enums\NotificationChannel;
 use App\Services\Notification\Channels\ChannelHandlerRegistry;
 use App\Services\Notification\Channels\EmailChannelHandler;
 use App\Services\Notification\Channels\PushChannelHandler;
 use App\Services\Notification\Channels\SmsChannelHandler;
 use App\Services\WebhookProvider;
-use Illuminate\Cache\RateLimiting\Limit;
-use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -35,11 +32,5 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        foreach (NotificationChannel::cases() as $channel) {
-            RateLimiter::for(
-                'notifications-' . $channel->value,
-                fn() => Limit::perSecond(100),
-            );
-        }
     }
 }

@@ -4,6 +4,7 @@ services:
     build:
       context: .
       dockerfile: images/php/Dockerfile
+    image: notification_php:latest
     container_name: notification_php
     restart: "on-failure:5"
     volumes:
@@ -11,6 +12,21 @@ services:
     networks:
       - notification_network
     depends_on:
+      - mariadb
+      - redis
+      - rabbitmq
+
+  worker:
+    image: notification_php:latest
+    container_name: notification_worker
+    restart: "on-failure:5"
+    command: php artisan queue:work rabbitmq --queue=notifications --timeout=30 --sleep=1
+    volumes:
+      - ./src:/var/www/html
+    networks:
+      - notification_network
+    depends_on:
+      - php
       - mariadb
       - redis
       - rabbitmq
