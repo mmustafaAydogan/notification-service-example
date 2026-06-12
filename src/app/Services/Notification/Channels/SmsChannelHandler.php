@@ -51,4 +51,12 @@ class SmsChannelHandler implements ChannelHandler
 
         SmsNotification::insert($rows);
     }
+
+    public function payloadFromNotification(\App\Models\Notification $notification): array
+    {
+        return [
+            'recipient' => $notification->smsNotification->recipient,
+            'content'   => $notification->smsNotification->content,
+        ];
+    }
 }

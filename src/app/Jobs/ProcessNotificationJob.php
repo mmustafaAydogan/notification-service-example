@@ -3,9 +3,9 @@
 namespace App\Jobs;
 
 use App\Contracts\NotificationProvider;
-use App\Enums\NotificationChannel;
 use App\Enums\NotificationStatus;
 use App\Models\Notification;
+use App\Services\Notification\Channels\ChannelHandlerRegistry;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\RateLimiter;
@@ -23,35 +23,43 @@ class ProcessNotificationJob implements ShouldQueue
     private const RATE_LIMIT_REDISPATCH_SECONDS = 2;
 
     public function __construct(
-        public readonly string              $notificationId,
-        public readonly NotificationChannel $channel,
-        public readonly array               $data,
-        public readonly int                 $priority = 5,
+        public readonly string $notificationId,
     ) {
         $this->onQueue('notifications');
     }
 
-    public function handle(NotificationProvider $provider): void
+    public function handle(NotificationProvider $provider, ChannelHandlerRegistry $registry): void
     {
-        $rateLimitKey = 'notifications-' . $this->channel->value;
+        $notification = Notification::with([
+            'smsNotification', 'emailNotification', 'pushNotification',
+        ])->find($this->notificationId);
+
+        if (!$notification) {
+            return;
+        }
+
+        if ($notification->status !== NotificationStatus::Pending) {
+            return;
+        }
+
+        $rateLimitKey = 'notifications-' . $notification->channel->value;
 
         if (RateLimiter::tooManyAttempts($rateLimitKey, self::RATE_LIMIT_PER_SECOND)) {
-            self::dispatch($this->notificationId, $this->channel, $this->data, $this->priority)
+            self::dispatch($this->notificationId)
                 ->delay(now()->addSeconds(self::RATE_LIMIT_REDISPATCH_SECONDS));
             return;
         }
         RateLimiter::hit($rateLimitKey, 1);
 
-        $notification = Notification::find($this->notificationId);
-
-        if (!$notification || !$notification->status->isCancellable()) {
+        if (!$notification->markAsProcessing()) {
             return;
         }
 
-        $notification->markAsProcessing();
+        $payload = $registry->handlerFor($notification->channel)
+            ->payloadFromNotification($notification);
 
         try {
-            $response = $provider->send($this->channel, $this->data);
+            $response = $provider->send($notification->channel, $payload);
             $notification->markAsSent($response->messageId);
         } catch (\RuntimeException $e) {
             if ($e->getCode() === 422) {

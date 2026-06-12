@@ -54,4 +54,13 @@ class EmailChannelHandler implements ChannelHandler
 
         EmailNotification::insert($rows);
     }
+
+    public function payloadFromNotification(\App\Models\Notification $notification): array
+    {
+        return [
+            'recipient' => $notification->emailNotification->recipient,
+            'subject'   => $notification->emailNotification->subject,
+            'body'      => $notification->emailNotification->body,
+        ];
+    }
 }

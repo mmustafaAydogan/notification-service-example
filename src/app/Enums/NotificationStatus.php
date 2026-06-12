@@ -12,6 +12,6 @@ enum NotificationStatus: string
 
     public function isCancellable(): bool
     {
-        return in_array($this, [self::Pending, self::Processing]);
+        return $this === self::Pending;
     }
 }

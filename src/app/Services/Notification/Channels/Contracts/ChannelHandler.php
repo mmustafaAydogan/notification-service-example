@@ -18,4 +18,6 @@ interface ChannelHandler
      * @param array<int, array{notification_id: string, data: array}> $items
      */
     public function persistDetailsBatch(array $items): void;
+
+    public function payloadFromNotification(\App\Models\Notification $notification): array;
 }

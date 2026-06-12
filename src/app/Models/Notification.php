@@ -35,9 +35,18 @@ class Notification extends Model
         'attempts'     => 'integer',
     ];
 
-    public function markAsProcessing(): void
+    public function markAsProcessing(): bool
     {
-        $this->update(['status' => NotificationStatus::Processing]);
+        $affected = static::whereKey($this->getKey())
+            ->where('status', NotificationStatus::Pending)
+            ->update(['status' => NotificationStatus::Processing]);
+
+        if ($affected === 0) {
+            return false;
+        }
+
+        $this->refresh();
+        return true;
     }
 
     public function markAsSent(string $providerMessageId): void
@@ -85,7 +94,7 @@ class Notification extends Model
 
     public function scopeCancellable(Builder $query): Builder
     {
-        return $query->whereIn('status', [NotificationStatus::Pending, NotificationStatus::Processing]);
+        return $query->where('status', NotificationStatus::Pending);
     }
 
     public function scopeInBatch(Builder $query, string $batchId): Builder

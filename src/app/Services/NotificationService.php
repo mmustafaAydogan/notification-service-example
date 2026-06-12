@@ -44,7 +44,7 @@ class NotificationService
         });
 
         $this->storeIdempotencyKey($idempotencyKey, $notification->id);
-        $this->dispatch($notification, $data);
+        $this->dispatch($notification);
 
         return [
             'id'         => $notification->id,
@@ -70,13 +70,10 @@ class NotificationService
         Redis::setex("idempotency:{$key}", 86400, $notificationId);
     }
 
-    private function dispatch(Notification $notification, array $data): void
+    private function dispatch(Notification $notification): void
     {
         dispatch(new ProcessNotificationJob(
             notificationId: $notification->id,
-            channel       : $notification->channel,
-            data          : $data,
-            priority      : $notification->priority,
         ));
     }
 }

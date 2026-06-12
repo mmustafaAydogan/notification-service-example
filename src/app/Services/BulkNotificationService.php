@@ -161,9 +161,6 @@ class BulkNotificationService
         foreach ($toInsert as $v) {
             dispatch(new ProcessNotificationJob(
                 notificationId: $v['notification_id'],
-                channel       : $v['channel'],
-                data          : $v['data'],
-                priority      : $this->resolvePriority($v['data']),
             ));
         }
     }

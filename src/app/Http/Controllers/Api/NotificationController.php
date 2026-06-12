@@ -16,6 +16,7 @@ use App\Services\BulkNotificationService;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use OpenApi\Attributes as OA;
 
 class NotificationController extends Controller
@@ -161,7 +162,11 @@ class NotificationController extends Controller
             'smsNotification',
             'emailNotification',
             'pushNotification',
-        ])->findOrFail($id);
+        ])->find($id);
+
+        if (!$notification) {
+            return response()->json(['message' => 'Notification not found.'], 404);
+        }
 
         return response()->json(new NotificationResource($notification));
     }
@@ -202,15 +207,23 @@ class NotificationController extends Controller
     )]
     public function cancel(string $id): JsonResponse
     {
-        $notification = Notification::findOrFail($id);
+        $affected = Notification::whereKey($id)
+            ->cancellable()
+            ->update(['status' => NotificationStatus::Cancelled]);
 
-        if (!$notification->status->isCancellable()) {
+        if ($affected === 0) {
+            $notification = Notification::find($id);
+
+            if (!$notification) {
+                return response()->json(['message' => 'Notification not found.'], 404);
+            }
+
             return response()->json([
                 'message' => "Notification with status '{$notification->status->value}' cannot be cancelled.",
             ], 409);
         }
 
-        $notification->update(['status' => NotificationStatus::Cancelled]);
+        $notification = Notification::findOrFail($id);
 
         return response()->json([
             'id'         => $notification->id,
@@ -245,14 +258,24 @@ class NotificationController extends Controller
     )]
     public function cancelBatch(string $batchId): JsonResponse
     {
-        $cancellable = Notification::inBatch($batchId)->cancellable();
+        $cancelledIds = DB::transaction(function () use ($batchId) {
+            $ids = Notification::inBatch($batchId)
+                ->cancellable()
+                ->lockForUpdate()
+                ->pluck('id');
 
-        $ids = $cancellable->pluck('id');
+            if ($ids->isEmpty()) {
+                return $ids;
+            }
 
-        Notification::whereIn('id', $ids)
-            ->update(['status' => NotificationStatus::Cancelled]);
+            Notification::inBatch($batchId)
+                ->cancellable()
+                ->update(['status' => NotificationStatus::Cancelled]);
 
-        return response()->json(['cancelled' => $ids], 200);
+            return $ids;
+        });
+
+        return response()->json(['cancelled' => $cancelledIds], 200);
     }
 
 }

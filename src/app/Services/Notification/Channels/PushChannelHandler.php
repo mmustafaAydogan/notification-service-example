@@ -54,4 +54,13 @@ class PushChannelHandler implements ChannelHandler
 
         PushNotification::insert($rows);
     }
+
+    public function payloadFromNotification(\App\Models\Notification $notification): array
+    {
+        return [
+            'device_token' => $notification->pushNotification->device_token,
+            'title'        => $notification->pushNotification->title,
+            'body'         => $notification->pushNotification->body,
+        ];
+    }
 }
