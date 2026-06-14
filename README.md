@@ -434,6 +434,37 @@ For bulk endpoints, the same correlation works via `batch_id`.
 
 ---
 
+## Testing
+
+The full test suite runs against the dockerized PHP container with a single command:
+
+```bash
+./bin/test
+```
+
+The script auto-starts the `php` service if it is not already running, installs Composer dependencies if needed, then executes `php artisan test`.
+
+### Coverage scope
+
+| Suite | Count | What it locks down |
+|------|------|--------------------|
+| **Unit** | 17 | `PriorityStatus` / `NotificationStatus` enums, SMS / Email / Push channel handlers (`idempotencyHash`, `validationRules`, channel routing), `ChannelHandlerRegistry` (resolution, missing-handler error, common-rule merge). |
+| **Feature — service layer** | 7 | `NotificationService::send` happy path (DB write + detail row), default-priority fallback, `ProcessNotificationJob` dispatch with the resolved priority, Redis idempotency key write-through, duplicate-key path raising `DuplicateNotificationException`. |
+| **Feature — API** | 16 | Every endpoint under `/api/notifications`: HTTP 202 on each channel + persistence, HTTP 409 on duplicate, HTTP 422 on validation failure, pagination + `status` / `channel` filters, `show` 200/404, `cancel` 200/409/404, `cancel/batch` filtering only `pending` members, `bulk` partial-success accounting, and per-item priority propagation in bulk dispatch. |
+
+### Test environment
+
+Tests run on an isolated configuration declared in `src/phpunit.xml`:
+
+- `DB_CONNECTION=sqlite` with `DB_DATABASE=:memory:` — each test class restarts on a freshly migrated DB via `RefreshDatabase`
+- `QUEUE_CONNECTION=sync` plus `Queue::fake()` in feature tests — `ProcessNotificationJob` dispatches are captured and asserted, not executed (no real HTTP to webhook.site, no MongoDB writes from the worker path)
+- `REDIS_DB=15` with prefix `noti-test:` — idempotency keys live in a dedicated Redis logical DB; `TestCase::setUp` flushes it at the start of every test
+- `LogRequests` middleware disabled per-test via `withoutMiddleware` — MongoDB stays out of the loop during HTTP tests
+
+No additional setup is required beyond `./bin/test`.
+
+---
+
 ## Configuration
 
 The application is configured exclusively through environment variables. The most relevant ones:

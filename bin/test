@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+
+cd "$ROOT_DIR"
+
+RUNNING="$(docker compose ps --services --filter status=running 2>/dev/null | grep -x 'php' || true)"
+
+if [ -z "$RUNNING" ]; then
+    echo "PHP container is not running. Starting required services..."
+    docker compose up -d --build --wait php
+    echo "Installing Composer dependencies..."
+    docker compose exec -T php composer install --no-interaction --prefer-dist
+fi
+
+echo "Running test suite..."
+docker compose exec -T php php artisan test "$@"
