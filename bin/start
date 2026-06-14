@@ -13,17 +13,6 @@ docker compose up -d --build --wait
 echo "Installing Composer dependencies..."
 docker compose exec -T php composer install --no-interaction --prefer-dist
 
-if [ ! -f src/.env ]; then
-    echo "Creating .env from .env.example..."
-    cp src/.env.example src/.env
-fi
-
-APP_KEY_VAL=$(grep '^APP_KEY=' src/.env 2>/dev/null | sed 's/^APP_KEY=//')
-if [ -z "$APP_KEY_VAL" ]; then
-    echo "Generating APP_KEY..."
-    docker compose exec -T php php artisan key:generate --force
-fi
-
 echo "Running migrations..."
 docker compose exec -T php php artisan migrate --force
 
