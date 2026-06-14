@@ -74,6 +74,7 @@ class NotificationService
     {
         dispatch(new ProcessNotificationJob(
             notificationId: $notification->id,
+            priority:       $notification->priority,
         ));
     }
 }

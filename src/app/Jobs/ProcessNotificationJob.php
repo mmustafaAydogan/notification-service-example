@@ -22,9 +22,13 @@ class ProcessNotificationJob implements ShouldQueue
     private const RATE_LIMIT_PER_SECOND         = 100;
     private const RATE_LIMIT_REDISPATCH_SECONDS = 2;
 
+    public int $priority;
+
     public function __construct(
         public readonly string $notificationId,
+        int $priority = 0,
     ) {
+        $this->priority = $priority;
         $this->onQueue('notifications');
     }
 
@@ -45,7 +49,7 @@ class ProcessNotificationJob implements ShouldQueue
         $rateLimitKey = 'notifications-' . $notification->channel->value;
 
         if (RateLimiter::tooManyAttempts($rateLimitKey, self::RATE_LIMIT_PER_SECOND)) {
-            self::dispatch($this->notificationId)
+            self::dispatch($this->notificationId, $this->priority)
                 ->delay(now()->addSeconds(self::RATE_LIMIT_REDISPATCH_SECONDS));
             return;
         }
