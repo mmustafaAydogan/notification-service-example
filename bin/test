@@ -11,6 +11,9 @@ RUNNING="$(docker compose ps --services --filter status=running 2>/dev/null | gr
 if [ -z "$RUNNING" ]; then
     echo "PHP container is not running. Starting required services..."
     docker compose up -d --build --wait php
+fi
+
+if ! docker compose exec -T php test -f vendor/autoload.php; then
     echo "Installing Composer dependencies..."
     docker compose exec -T php composer install --no-interaction --prefer-dist
 fi

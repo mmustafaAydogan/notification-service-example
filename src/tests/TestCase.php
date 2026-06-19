@@ -14,7 +14,9 @@ abstract class TestCase extends BaseTestCase
         try {
             Redis::connection()->flushdb();
         } catch (\Throwable $e) {
-            // Redis unavailable in this test context — services using it should fake it.
+            // Redis is required for the idempotency-path feature tests. Where it
+            // is unavailable the flush is skipped and those tests surface the
+            // connection error themselves rather than failing here.
         }
     }
 }
