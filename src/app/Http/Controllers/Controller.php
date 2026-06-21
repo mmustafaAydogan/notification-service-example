@@ -6,9 +6,9 @@ use OpenApi\Attributes as OA;
 
 #[OA\Info(
     version: '1.0.0',
-    title: 'Notification API',
     description: 'Multi-channel (SMS / Email / Push) notification dispatch service with batch support, idempotency and async processing.',
-    contact: new OA\Contact(name: 'In01', email: 'support@in01.local'),
+    title: 'Notification API',
+    contact: new OA\Contact(name: 'In01', email: 'support@in01.local')
 )]
 #[OA\Server(url: 'http://localhost:8080', description: 'Local')]
 #[OA\Tag(name: 'Notifications', description: 'Send, list, inspect and cancel notifications')]

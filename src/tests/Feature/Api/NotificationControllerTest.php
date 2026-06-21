@@ -172,7 +172,10 @@ class NotificationControllerTest extends TestCase
         $response = $this->postJson("/api/notifications/cancel/{$sms->id}");
 
         $response->assertStatus(200)
-            ->assertJsonPath('id', $sms->id);
+            ->assertExactJson([
+                'id'     => $sms->id,
+                'status' => NotificationStatus::Cancelled->value,
+            ]);
 
         $this->assertSame(
             NotificationStatus::Cancelled->value,

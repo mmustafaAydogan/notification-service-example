@@ -9,9 +9,4 @@ enum NotificationStatus: string
     case Sent       = 'sent';
     case Failed     = 'failed';
     case Cancelled  = 'cancelled';
-
-    public function isCancellable(): bool
-    {
-        return $this === self::Pending;
-    }
 }

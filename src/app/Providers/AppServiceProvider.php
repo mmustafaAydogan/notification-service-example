@@ -16,7 +16,7 @@ class AppServiceProvider extends ServiceProvider
 
     public function register(): void
     {
-        $this->app->bind(NotificationProvider::class, WebhookProvider::class);
+        $this->app->singleton(NotificationProvider::class, WebhookProvider::class);
 
         $this->app->tag([
             SmsChannelHandler::class,

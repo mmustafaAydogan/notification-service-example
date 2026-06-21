@@ -184,9 +184,8 @@ class NotificationController extends Controller
                 description: 'Cancelled',
                 content: new OA\JsonContent(
                     properties: [
-                        new OA\Property(property: 'id',         type: 'string', format: 'uuid'),
-                        new OA\Property(property: 'status',     ref: '#/components/schemas/NotificationStatus'),
-                        new OA\Property(property: 'updated_at', type: 'string', format: 'date-time'),
+                        new OA\Property(property: 'id',     type: 'string', format: 'uuid'),
+                        new OA\Property(property: 'status', ref: '#/components/schemas/NotificationStatus'),
                     ],
                     type: 'object',
                 ),
@@ -223,12 +222,9 @@ class NotificationController extends Controller
             ], 409);
         }
 
-        $notification = Notification::findOrFail($id);
-
         return response()->json([
-            'id'         => $notification->id,
-            'status'     => $notification->status,
-            'updated_at' => $notification->updated_at,
+            'id'     => $id,
+            'status' => NotificationStatus::Cancelled,
         ], 200);
     }
 
