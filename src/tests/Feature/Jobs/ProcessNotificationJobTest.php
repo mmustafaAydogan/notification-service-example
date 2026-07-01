@@ -7,6 +7,7 @@ use App\Enums\NotificationChannel;
 use App\Enums\NotificationStatus;
 use App\Jobs\ProcessNotificationJob;
 use App\Models\Notification;
+use App\Models\ScheduledDispatch;
 use App\Models\SmsNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -68,8 +69,10 @@ class ProcessNotificationJobTest extends TestCase
         $this->assertSame(NotificationStatus::Pending, $notification->status);
         $this->assertSame(1, $notification->attempts);
         $this->assertSame('connection timed out', $notification->last_error);
-        $this->assertNotNull($notification->scheduled_at);
-        $this->assertTrue($notification->scheduled_at->isFuture());
+
+        $dispatch = ScheduledDispatch::where('notification_id', $notification->id)->first();
+        $this->assertNotNull($dispatch);
+        $this->assertTrue($dispatch->dispatch_at->isFuture());
     }
 
     public function test_marks_failed_after_max_attempts_exhausted(): void
@@ -83,6 +86,9 @@ class ProcessNotificationJobTest extends TestCase
         $notification->refresh();
         $this->assertSame(NotificationStatus::Failed, $notification->status);
         $this->assertSame(5, $notification->attempts);
+        $this->assertDatabaseMissing('scheduled_dispatches', [
+            'notification_id' => $notification->id,
+        ]);
     }
 
     public function test_does_not_call_provider_when_notification_is_not_pending(): void

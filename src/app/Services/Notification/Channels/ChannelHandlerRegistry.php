@@ -36,7 +36,7 @@ class ChannelHandlerRegistry
         return [
             'priority'     => ['sometimes',  Rule::enum(PriorityStatus::class)],
             'batch_id'     => ['sometimes', 'uuid'],
-            'scheduled_at' => ['sometimes', 'date', 'after:now'],
+            'scheduled_at' => ['sometimes', 'date_format:Y-m-d H:i', 'after:now'],
         ];
     }
 }

@@ -7,6 +7,7 @@ use App\Enums\NotificationStatus;
 use App\Enums\PriorityStatus;
 use App\Jobs\ProcessNotificationJob;
 use App\Models\Notification;
+use App\Models\ScheduledDispatch;
 use App\Services\Notification\Channels\ChannelHandlerRegistry;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
@@ -37,22 +38,19 @@ class BulkNotificationService
             return $this->respond($batchId, 0, $errors);
         }
 
-        try {
-            $this->bulkInsert($toInsert, $batchId);
-        } catch (\Throwable $e) {
-            foreach ($toInsert as $v) {
-                $errors[] = [
-                    'index'  => $v['index'],
-                    'reason' => 'concurrent_write_conflict',
-                ];
+        $inserted = $this->bulkInsert($toInsert, $batchId);
+
+        $insertedIds = array_flip(array_map(fn ($v) => $v['notification_id'], $inserted));
+        foreach ($toInsert as $v) {
+            if (!isset($insertedIds[$v['notification_id']])) {
+                $errors[] = ['index' => $v['index'], 'reason' => 'duplicate'];
             }
-            return $this->respond($batchId, 0, $errors);
         }
 
-        $this->storeIdempotencyKeys($toInsert);
-        $this->dispatchAll($toInsert);
+        $this->storeIdempotencyKeys($inserted);
+        $this->dispatchImmediate($inserted);
 
-        return $this->respond($batchId, count($toInsert), $errors);
+        return $this->respond($batchId, count($inserted), $errors);
     }
 
     private function validateAll(array $notifications, string $batchId, array &$errors): array
@@ -107,7 +105,7 @@ class BulkNotificationService
         return $toInsert;
     }
 
-    private function bulkInsert(array $toInsert, string $batchId): void
+    private function bulkInsert(array $toInsert, string $batchId): array
     {
         $now = now();
 
@@ -124,22 +122,51 @@ class BulkNotificationService
             'updated_at'      => $now,
         ], $toInsert);
 
-        $byChannel = [];
-        foreach ($toInsert as $v) {
-            $byChannel[$v['channel']->value][] = [
-                'notification_id' => $v['notification_id'],
-                'data'            => $v['data'],
-            ];
-        }
+        return DB::transaction(function () use ($toInsert, $baseRows, $now) {
+            Notification::insertOrIgnore($baseRows);
 
-        DB::transaction(function () use ($baseRows, $byChannel) {
-            Notification::insert($baseRows);
+            $ids         = array_map(fn ($v) => $v['notification_id'], $toInsert);
+            $insertedIds = array_flip(Notification::whereIn('id', $ids)->pluck('id')->all());
+
+            $inserted = array_values(array_filter(
+                $toInsert,
+                fn ($v) => isset($insertedIds[$v['notification_id']]),
+            ));
+
+            if (empty($inserted)) {
+                return [];
+            }
+
+            $byChannel = [];
+            foreach ($inserted as $v) {
+                $byChannel[$v['channel']->value][] = [
+                    'notification_id' => $v['notification_id'],
+                    'data'            => $v['data'],
+                ];
+            }
 
             foreach ($byChannel as $channelValue => $items) {
                 $this->registry
                     ->handlerFor(NotificationChannel::from($channelValue))
                     ->persistDetailsBatch($items);
             }
+
+            $dispatchRows = [];
+            foreach ($inserted as $v) {
+                if (($v['data']['scheduled_at'] ?? null) !== null) {
+                    $dispatchRows[] = [
+                        'notification_id' => $v['notification_id'],
+                        'dispatch_at'     => $v['data']['scheduled_at'],
+                        'created_at'      => $now,
+                    ];
+                }
+            }
+
+            if (!empty($dispatchRows)) {
+                ScheduledDispatch::insert($dispatchRows);
+            }
+
+            return $inserted;
         });
     }
 
@@ -156,9 +183,13 @@ class BulkNotificationService
         });
     }
 
-    private function dispatchAll(array $toInsert): void
+    private function dispatchImmediate(array $toInsert): void
     {
         foreach ($toInsert as $v) {
+            if (($v['data']['scheduled_at'] ?? null) !== null) {
+                continue;
+            }
+
             dispatch(new ProcessNotificationJob(
                 notificationId: $v['notification_id'],
                 priority:       $this->resolvePriority($v['data']),

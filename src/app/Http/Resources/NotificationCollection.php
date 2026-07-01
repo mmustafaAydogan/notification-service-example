@@ -17,9 +17,9 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'batch_id', type: 'string', format: 'uuid', nullable: true),
         new OA\Property(property: 'provider_message_id', type: 'string', example: 'twilio_SMxxxx', nullable: true),
         new OA\Property(property: 'attempts', type: 'integer', example: 0),
-        new OA\Property(property: 'scheduled_at', type: 'string', format: 'date-time', nullable: true),
-        new OA\Property(property: 'sent_at', type: 'string', format: 'date-time', nullable: true),
-        new OA\Property(property: 'created_at', type: 'string', format: 'date-time'),
+        new OA\Property(property: 'scheduled_at', type: 'string', example: '2026-07-01 09:00', nullable: true),
+        new OA\Property(property: 'sent_at', type: 'string', example: '2026-07-01 09:00:15', nullable: true),
+        new OA\Property(property: 'created_at', type: 'string', example: '2026-07-01 09:00:15'),
     ],
     type      : 'object',
 )]

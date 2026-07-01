@@ -18,9 +18,9 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'batch_id', type: 'string', format: 'uuid', nullable: true),
         new OA\Property(property: 'provider_message_id', type: 'string', example: 'twilio_SMxxxx', nullable: true),
         new OA\Property(property: 'attempts', type: 'integer', example: 0),
-        new OA\Property(property: 'scheduled_at', type: 'string', format: 'date-time', nullable: true),
-        new OA\Property(property: 'sent_at', type: 'string', format: 'date-time', nullable: true),
-        new OA\Property(property: 'created_at', type: 'string', format: 'date-time'),
+        new OA\Property(property: 'scheduled_at', type: 'string', example: '2026-07-01 09:00', nullable: true),
+        new OA\Property(property: 'sent_at', type: 'string', example: '2026-07-01 09:00:15', nullable: true),
+        new OA\Property(property: 'created_at', type: 'string', example: '2026-07-01 09:00:15'),
         new OA\Property(
             property   : 'detail',
             description: 'Channel-specific payload. Shape depends on `channel`. Omitted when relation is not eager-loaded (e.g. index endpoint).',
@@ -72,6 +72,7 @@ use OpenApi\Attributes as OA;
                     new OA\Property(property: 'device_token', description: 'For push', type: 'string', nullable: true),
                     new OA\Property(property: 'title', description: 'For push', type: 'string', nullable: true),
                     new OA\Property(property: 'priority', type: 'string', enum: ['Low', 'Medium', 'High'], nullable: true),
+                    new OA\Property(property: 'scheduled_at', description: 'Scheduled delivery time', type: 'string', example: '2026-07-01 09:00', nullable: true),
                 ],
                 type      : 'object',
             ),
@@ -96,7 +97,7 @@ use OpenApi\Attributes as OA;
                     new OA\Property(property: 'index', type: 'integer'),
                     new OA\Property(
                         property   : 'reason',
-                        description: 'Sentinel values: "duplicate" (idempotency hit), "concurrent_write_conflict" (race on bulk insert). Otherwise a validation error message.',
+                        description: 'Sentinel value: "duplicate" (idempotency hit, including concurrent race). Otherwise a validation error message.',
                         type       : 'string',
                         example    : 'duplicate',
                     ),
@@ -119,9 +120,9 @@ class NotificationResource extends JsonResource
             'batch_id'            => $this->batch_id,
             'provider_message_id' => $this->provider_message_id,
             'attempts'            => $this->attempts,
-            'scheduled_at'        => $this->scheduled_at?->toIso8601String(),
-            'sent_at'             => $this->sent_at?->toIso8601String(),
-            'created_at'          => $this->created_at->toIso8601String(),
+            'scheduled_at'        => $this->scheduled_at?->format('Y-m-d H:i'),
+            'sent_at'             => $this->sent_at?->format('Y-m-d H:i:s'),
+            'created_at'          => $this->created_at->format('Y-m-d H:i:s'),
         ];
 
         if (($detail = $this->resolveDetail()) !== null) {

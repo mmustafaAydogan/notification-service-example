@@ -33,7 +33,7 @@ Built for the Insider One Software Engineer Assessment 2026.
 ```
 
 This single command:
-1. Builds images and starts all containers (PHP, Nginx, MariaDB, Redis, RabbitMQ, worker)
+1. Builds images and starts all containers (PHP, Nginx, MariaDB, Redis, RabbitMQ, worker, scheduler)
 2. Installs Composer dependencies
 3. Generates an `APP_KEY` if one is not yet set in `src/.env`
 4. Runs database migrations
@@ -132,6 +132,12 @@ If any dependency reports `unhealthy`, inspect `docker compose logs` for the fai
       │ - outgoing_requests : every webhook.site call (req + resp)   │
       │ - joined by `notification_id` / `batch_id`                   │
       └──────────────────────────────────────────────────────────────┘
+
+      ┌──────────────────────────────────────────────────────────────┐
+      │ Scheduler (per minute)  ->  notifications:dispatch-due       │
+      │ - reads outbox rows that are ready to send                   │
+      │ - re-queues scheduled + retry notifications to RabbitMQ      │
+      └──────────────────────────────────────────────────────────────┘
 ```
 
 ### Key design decisions
@@ -150,7 +156,9 @@ If any dependency reports `unhealthy`, inspect `docker compose logs` for the fai
 
 **Atomic state transitions.** State changes that may race with concurrent operations (`Pending → Processing`, `* → Cancelled`) are implemented as conditional `UPDATE … WHERE status = …` statements with affected-row inspection. This eliminates read-then-write races between the HTTP cancel path and the worker's pickup path.
 
-**Retry strategy.** On transient provider errors the worker increments `attempts`, captures `last_error`, and resets the notification to `pending` with `scheduled_at = now() + 15 minutes`. After 5 failed attempts the notification is marked `failed`. HTTP 422 from the provider (semantic validation failure) is terminal and does not retry.
+**Retry strategy.** On transient provider errors the worker increments `attempts`, captures `last_error`, resets the notification to `pending`, and adds a `scheduled_dispatches` (outbox) row to be re-sent `15 minutes` later. The `notifications:dispatch-due` scheduler re-queues it when its time comes. After 5 failed attempts the notification is marked `failed`. HTTP 422 from the provider (semantic validation failure) is terminal and does not retry.
+
+**Scheduled delivery (transactional outbox).** A request may carry a `scheduled_at` (`Y-m-d H:i`, future). Instead of going straight to the queue, such notifications get a row in the `scheduled_dispatches` outbox table, written in the same transaction as the notification. A per-minute scheduler (`notifications:dispatch-due`, run by the `scheduler` container) reads the rows that are ready to send and dispatches them to RabbitMQ. The same outbox is reused for retries, so scheduled sends and retries follow one path. Immediate notifications skip the outbox and go straight to RabbitMQ, keeping the hot path fast.
 
 ---
 
@@ -194,6 +202,20 @@ curl -X POST http://localhost:8080/api/notifications/sms \
 ```
 
 Constraints: `recipient` must be in E.164 format (`+[country code][number]`), `content` ≤ 160 characters. `priority` is optional (one of `Low | Medium | High`).
+
+To deliver later, add `scheduled_at` (`Y-m-d H:i`, must be in the future). Available on every channel and on bulk items:
+
+```bash
+curl -X POST http://localhost:8080/api/notifications/sms \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipient":    "+905551234567",
+    "content":      "Reminder: your appointment is tomorrow",
+    "scheduled_at": "2026-07-01 09:00"
+  }'
+```
+
+The notification stays `pending` until the scheduler sends it at `scheduled_at` (minute granularity); it can still be cancelled before then.
 
 ### Send an Email notification
 
@@ -449,8 +471,9 @@ The script auto-starts the `php` service if it is not already running, installs 
 | Suite | Count | What it locks down |
 |------|------|--------------------|
 | **Unit** | 17 | `PriorityStatus` / `NotificationStatus` enums, SMS / Email / Push channel handlers (`idempotencyHash`, `validationRules`, channel routing), `ChannelHandlerRegistry` (resolution, missing-handler error, common-rule merge). |
-| **Feature — service layer** | 7 | `NotificationService::send` happy path (DB write + detail row), default-priority fallback, `ProcessNotificationJob` dispatch with the resolved priority, Redis idempotency key write-through, duplicate-key path raising `DuplicateNotificationException`. |
-| **Feature — API** | 16 | Every endpoint under `/api/notifications`: HTTP 202 on each channel + persistence, HTTP 409 on duplicate, HTTP 422 on validation failure, pagination + `status` / `channel` filters, `show` 200/404, `cancel` 200/409/404, `cancel/batch` filtering only `pending` members, `bulk` partial-success accounting, and per-item priority propagation in bulk dispatch. |
+| **Feature — service layer** | 9 | `NotificationService::send` happy path (DB write + detail row), default-priority fallback, `ProcessNotificationJob` dispatch with the resolved priority, Redis idempotency key write-through, duplicate-key path raising `DuplicateNotificationException`, scheduled send writing an outbox row without dispatching, and immediate send skipping the outbox. |
+| **Feature — API** | 17 | Every endpoint under `/api/notifications`: HTTP 202 on each channel + persistence, HTTP 409 on duplicate, HTTP 422 on validation failure, pagination + `status` / `channel` filters, `show` 200/404, `cancel` 200/409/404 + outbox cleanup, `cancel/batch` filtering only `pending` members, `bulk` partial-success accounting, and per-item priority propagation in bulk dispatch. |
+| **Feature — scheduler** | 3 | `notifications:dispatch-due` sends due `scheduled_dispatches` rows to the queue, leaves future rows untouched, and propagates each notification's priority. |
 
 ### Test environment
 

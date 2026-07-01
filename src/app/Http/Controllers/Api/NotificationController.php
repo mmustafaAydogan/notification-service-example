@@ -12,6 +12,7 @@ use App\Http\Requests\Api\SendSmsNotificationRequest;
 use App\Http\Resources\NotificationCollection;
 use App\Http\Resources\NotificationResource;
 use App\Models\Notification;
+use App\Models\ScheduledDispatch;
 use App\Services\BulkNotificationService;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
@@ -222,6 +223,8 @@ class NotificationController extends Controller
             ], 409);
         }
 
+        ScheduledDispatch::where('notification_id', $id)->delete();
+
         return response()->json([
             'id'     => $id,
             'status' => NotificationStatus::Cancelled,
@@ -267,6 +270,8 @@ class NotificationController extends Controller
             Notification::inBatch($batchId)
                 ->cancellable()
                 ->update(['status' => NotificationStatus::Cancelled]);
+
+            ScheduledDispatch::whereIn('notification_id', $ids)->delete();
 
             return $ids;
         });

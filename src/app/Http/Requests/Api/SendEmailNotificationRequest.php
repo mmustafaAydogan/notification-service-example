@@ -15,6 +15,7 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'subject',   type: 'string', example: 'Siparişiniz Onaylandı', maxLength: 255),
         new OA\Property(property: 'body',      type: 'string', example: 'Sayın müşterimiz, siparişiniz başarıyla onaylanmıştır.',maxLength: 10000),
         new OA\Property(property: 'priority',  description: 'Message Priority', type: 'string',enum:['Low', 'Medium', 'High']),
+        new OA\Property(property: 'scheduled_at', description: 'Scheduled delivery time', type: 'string', example: '2026-07-01 09:00', nullable: true),
     ],
     type: 'object',
 )]

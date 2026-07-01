@@ -10,9 +10,11 @@ use App\Jobs\ProcessNotificationJob;
 use App\Models\EmailNotification;
 use App\Models\Notification;
 use App\Models\PushNotification;
+use App\Models\ScheduledDispatch;
 use App\Models\SmsNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -205,6 +207,21 @@ class NotificationControllerTest extends TestCase
         $response->assertStatus(404);
     }
 
+    public function test_cancel_removes_outbox_row(): void
+    {
+        $notification = $this->createSmsNotification();
+        ScheduledDispatch::create([
+            'notification_id' => $notification->id,
+            'dispatch_at'     => now()->addHour(),
+        ]);
+
+        $this->postJson("/api/notifications/cancel/{$notification->id}")->assertStatus(200);
+
+        $this->assertDatabaseMissing('scheduled_dispatches', [
+            'notification_id' => $notification->id,
+        ]);
+    }
+
     public function test_cancel_batch_cancels_all_cancellable_in_batch(): void
     {
         $batchId = (string) Str::uuid();
@@ -268,6 +285,31 @@ class NotificationControllerTest extends TestCase
             ->assertJsonPath('accepted', 2)
             ->assertJsonPath('rejected', 1)
             ->assertJsonPath('errors.0.index', 2);
+    }
+
+    public function test_bulk_marks_only_db_conflicting_row_as_duplicate(): void
+    {
+        $dup = ['channel' => 'sms', 'recipient' => '+905550000077', 'content' => 'dup'];
+
+        $this->postJson('/api/notifications/bulk', ['notifications' => [$dup]])
+            ->assertStatus(202)->assertJsonPath('accepted', 1);
+
+        Redis::del('idempotency:' . md5('+905550000077|dup|sms'));
+
+        $response = $this->postJson('/api/notifications/bulk', [
+            'notifications' => [
+                $dup,
+                ['channel' => 'sms', 'recipient' => '+905550000088', 'content' => 'fresh'],
+            ],
+        ]);
+
+        $response->assertStatus(202)
+            ->assertJsonPath('accepted', 1)
+            ->assertJsonPath('rejected', 1)
+            ->assertJsonPath('errors.0.index', 0)
+            ->assertJsonPath('errors.0.reason', 'duplicate');
+
+        $this->assertSame(2, Notification::count());
     }
 
     private function seedNotifications(): void

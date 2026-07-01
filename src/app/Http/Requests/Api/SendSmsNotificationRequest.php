@@ -14,6 +14,7 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'recipient', description: 'E.164 formatted phone number', type: 'string', example: '+905551234567', maxLength: 16),
         new OA\Property(property: 'content',   type: 'string', example: 'Merhaba, siparişiniz hazır.', maxLength: 160),
         new OA\Property(property: 'priority',  description: 'Message Priority', type: 'string', enum:['Low', 'Medium', 'High']),
+        new OA\Property(property: 'scheduled_at', description: 'Scheduled delivery time', type: 'string', example: '2026-07-01 09:00', nullable: true),
     ],
     type: 'object',
 )]

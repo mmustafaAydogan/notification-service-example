@@ -8,6 +8,7 @@ use App\Enums\PriorityStatus;
 use App\Exceptions\DuplicateNotificationException;
 use App\Jobs\ProcessNotificationJob;
 use App\Models\Notification;
+use App\Models\ScheduledDispatch;
 use App\Models\SmsNotification;
 use App\Services\NotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -129,6 +130,26 @@ class NotificationServiceTest extends TestCase
         $this->assertSame(1, Notification::count());
     }
 
+    public function test_send_throws_duplicate_exception_when_redis_missing_but_db_has_key(): void
+    {
+        $payload = ['recipient' => '+905551112233', 'content' => 'hi'];
+
+        $first = $this->service->send(NotificationChannel::Sms, $payload);
+
+        $handler = app(\App\Services\Notification\Channels\ChannelHandlerRegistry::class)
+            ->handlerFor(NotificationChannel::Sms);
+        Redis::del("idempotency:{$handler->idempotencyHash($payload)}");
+
+        try {
+            $this->service->send(NotificationChannel::Sms, $payload);
+            $this->fail('Expected DuplicateNotificationException was not thrown.');
+        } catch (DuplicateNotificationException $e) {
+            $this->assertSame($first['id'], $e->existingNotificationId);
+        }
+
+        $this->assertSame(1, Notification::count());
+    }
+
     public function test_send_defaults_to_low_priority_when_omitted(): void
     {
         $result = $this->service->send(NotificationChannel::Sms, [
@@ -137,5 +158,34 @@ class NotificationServiceTest extends TestCase
         ]);
 
         $this->assertSame(PriorityStatus::Low->valueInt(), Notification::find($result['id'])->priority);
+    }
+
+    public function test_scheduled_send_writes_outbox_row_and_does_not_dispatch(): void
+    {
+        $result = $this->service->send(NotificationChannel::Sms, [
+            'recipient'    => '+905551112233',
+            'content'      => 'later',
+            'scheduled_at' => now()->addHour()->toDateTimeString(),
+        ]);
+
+        $this->assertDatabaseHas('scheduled_dispatches', [
+            'notification_id' => $result['id'],
+        ]);
+
+        Queue::assertNotPushed(ProcessNotificationJob::class);
+    }
+
+    public function test_immediate_send_does_not_write_outbox_row(): void
+    {
+        $result = $this->service->send(NotificationChannel::Sms, [
+            'recipient' => '+905551112233',
+            'content'   => 'now',
+        ]);
+
+        $this->assertDatabaseMissing('scheduled_dispatches', [
+            'notification_id' => $result['id'],
+        ]);
+
+        Queue::assertPushed(ProcessNotificationJob::class);
     }
 }

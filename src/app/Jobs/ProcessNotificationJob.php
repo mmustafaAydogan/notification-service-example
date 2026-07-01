@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Contracts\NotificationProvider;
 use App\Enums\NotificationStatus;
 use App\Models\Notification;
+use App\Models\ScheduledDispatch;
 use App\Services\Notification\Channels\ChannelHandlerRegistry;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -78,9 +79,11 @@ class ProcessNotificationJob implements ShouldQueue
                 return;
             }
 
-            $notification->update([
-                'status'       => NotificationStatus::Pending,
-                'scheduled_at' => now()->addMinutes(self::RETRY_DELAY_MINUTES),
+            $notification->update(['status' => NotificationStatus::Pending]);
+
+            ScheduledDispatch::create([
+                'notification_id' => $notification->id,
+                'dispatch_at'     => now()->addMinutes(self::RETRY_DELAY_MINUTES),
             ]);
         }
     }

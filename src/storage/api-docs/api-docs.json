@@ -597,10 +597,6 @@
                                         },
                                         "status": {
                                             "$ref": "#/components/schemas/NotificationStatus"
-                                        },
-                                        "updated_at": {
-                                            "type": "string",
-                                            "format": "date-time"
                                         }
                                     },
                                     "type": "object"
@@ -810,6 +806,12 @@
                             "Medium",
                             "High"
                         ]
+                    },
+                    "scheduled_at": {
+                        "description": "Scheduled delivery time",
+                        "type": "string",
+                        "example": "2026-07-01 09:00",
+                        "nullable": true
                     }
                 },
                 "type": "object"
@@ -844,6 +846,12 @@
                             "Medium",
                             "High"
                         ]
+                    },
+                    "scheduled_at": {
+                        "description": "Scheduled delivery time",
+                        "type": "string",
+                        "example": "2026-07-01 09:00",
+                        "nullable": true
                     }
                 },
                 "type": "object"
@@ -873,6 +881,12 @@
                             "Medium",
                             "High"
                         ]
+                    },
+                    "scheduled_at": {
+                        "description": "Scheduled delivery time",
+                        "type": "string",
+                        "example": "2026-07-01 09:00",
+                        "nullable": true
                     }
                 },
                 "type": "object"
@@ -915,17 +929,17 @@
                     },
                     "scheduled_at": {
                         "type": "string",
-                        "format": "date-time",
+                        "example": "2026-07-01 09:00",
                         "nullable": true
                     },
                     "sent_at": {
                         "type": "string",
-                        "format": "date-time",
+                        "example": "2026-07-01 09:00:15",
                         "nullable": true
                     },
                     "created_at": {
                         "type": "string",
-                        "format": "date-time"
+                        "example": "2026-07-01 09:00:15"
                     }
                 },
                 "type": "object"
@@ -1003,17 +1017,17 @@
                     },
                     "scheduled_at": {
                         "type": "string",
-                        "format": "date-time",
+                        "example": "2026-07-01 09:00",
                         "nullable": true
                     },
                     "sent_at": {
                         "type": "string",
-                        "format": "date-time",
+                        "example": "2026-07-01 09:00:15",
                         "nullable": true
                     },
                     "created_at": {
                         "type": "string",
-                        "format": "date-time"
+                        "example": "2026-07-01 09:00:15"
                     },
                     "detail": {
                         "description": "Channel-specific payload. Shape depends on `channel`. Omitted when relation is not eager-loaded (e.g. index endpoint).",
@@ -1120,6 +1134,12 @@
                                         "Medium",
                                         "High"
                                     ]
+                                },
+                                "scheduled_at": {
+                                    "description": "Scheduled delivery time",
+                                    "type": "string",
+                                    "example": "2026-07-01 09:00",
+                                    "nullable": true
                                 }
                             },
                             "type": "object"

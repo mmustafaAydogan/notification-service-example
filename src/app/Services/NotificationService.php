@@ -8,7 +8,9 @@ use App\Enums\PriorityStatus;
 use App\Exceptions\DuplicateNotificationException;
 use App\Jobs\ProcessNotificationJob;
 use App\Models\Notification;
+use App\Models\ScheduledDispatch;
 use App\Services\Notification\Channels\ChannelHandlerRegistry;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 
@@ -28,28 +30,44 @@ class NotificationService
             throw new DuplicateNotificationException($duplicate->id);
         }
 
-        $notification = DB::transaction(function () use ($channel, $data, $idempotencyKey, $handler) {
-            $notification = Notification::create([
-                'idempotency_key' => $idempotencyKey,
-                'channel'         => $channel,
-                'priority'        => PriorityStatus::tryFrom($data['priority'] ?? '')?->valueInt() ?? PriorityStatus::Low->valueInt(),
-                'status'          => NotificationStatus::Pending,
-                'batch_id'        => $data['batch_id'] ?? null,
-                'scheduled_at'    => $data['scheduled_at'] ?? null,
-            ]);
+        $scheduledAt = $data['scheduled_at'] ?? null;
 
-            $handler->persistDetail($notification->id, $data);
+        try {
+            $notification = DB::transaction(function () use ($channel, $data, $idempotencyKey, $handler, $scheduledAt) {
+                $notification = Notification::create([
+                    'idempotency_key' => $idempotencyKey,
+                    'channel'         => $channel,
+                    'priority'        => PriorityStatus::tryFrom($data['priority'] ?? '')?->valueInt() ?? PriorityStatus::Low->valueInt(),
+                    'status'          => NotificationStatus::Pending,
+                    'batch_id'        => $data['batch_id'] ?? null,
+                    'scheduled_at'    => $scheduledAt,
+                ]);
 
-            return $notification;
-        });
+                $handler->persistDetail($notification->id, $data);
+
+                if ($scheduledAt !== null) {
+                    ScheduledDispatch::create([
+                        'notification_id' => $notification->id,
+                        'dispatch_at'     => $scheduledAt,
+                    ]);
+                }
+
+                return $notification;
+            });
+        } catch (UniqueConstraintViolationException $e) {
+            throw $this->resolveDuplicate($idempotencyKey, $e);
+        }
 
         $this->storeIdempotencyKey($idempotencyKey, $notification->id);
-        $this->dispatch($notification);
+
+        if ($scheduledAt === null) {
+            $this->dispatch($notification);
+        }
 
         return [
             'id'         => $notification->id,
             'status'     => $notification->status,
-            'created_at' => $notification->created_at,
+            'created_at' => $notification->created_at->format('Y-m-d H:i:s'),
         ];
     }
 
@@ -63,6 +81,19 @@ class NotificationService
         }
 
         return Notification::find($notificationId);
+    }
+
+    private function resolveDuplicate(string $key, UniqueConstraintViolationException $e): \Throwable
+    {
+        $existing = Notification::where('idempotency_key', $key)->first();
+
+        if ($existing === null) {
+            return $e;
+        }
+
+        $this->storeIdempotencyKey($key, $existing->id);
+
+        return new DuplicateNotificationException($existing->id);
     }
 
     private function storeIdempotencyKey(string $key, string $notificationId): void

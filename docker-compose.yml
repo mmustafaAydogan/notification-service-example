@@ -31,6 +31,21 @@ services:
       - redis
       - rabbitmq
 
+  scheduler:
+    image: notification_php:latest
+    container_name: notification_scheduler
+    restart: "on-failure:5"
+    command: php artisan schedule:work
+    volumes:
+      - ./src:/var/www/html
+    networks:
+      - notification_network
+    depends_on:
+      - php
+      - mariadb
+      - redis
+      - rabbitmq
+
   nginx:
     image: nginx:alpine
     container_name: notification_nginx
