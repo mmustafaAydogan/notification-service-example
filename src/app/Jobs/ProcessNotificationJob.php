@@ -4,6 +4,8 @@ namespace App\Jobs;
 
 use App\Contracts\NotificationProvider;
 use App\Enums\NotificationStatus;
+use App\Exceptions\PermanentDeliveryException;
+use App\Exceptions\TransientDeliveryException;
 use App\Models\Notification;
 use App\Models\ScheduledDispatch;
 use App\Services\Notification\Channels\ChannelHandlerRegistry;
@@ -65,26 +67,31 @@ class ProcessNotificationJob implements ShouldQueue
 
         try {
             $response = $provider->send($notification->channel, $payload, $notification->id);
-            $notification->markAsSent($response->messageId);
-        } catch (\RuntimeException $e) {
-            if ($e->getCode() === 422) {
-                $notification->markAsFailed($e->getMessage());
-                return;
-            }
-
-            $notification->recordError($e->getMessage());
-
-            if ($notification->attempts >= self::MAX_ATTEMPTS) {
-                $notification->markAsFailed($e->getMessage());
-                return;
-            }
-
-            $notification->update(['status' => NotificationStatus::Pending]);
-
-            ScheduledDispatch::create([
-                'notification_id' => $notification->id,
-                'dispatch_at'     => now()->addMinutes(self::RETRY_DELAY_MINUTES),
-            ]);
+        } catch (PermanentDeliveryException $e) {
+            $notification->markAsFailed($e->getMessage());
+            return;
+        } catch (TransientDeliveryException $e) {
+            $this->handleTransientFailure($notification, $e->getMessage());
+            return;
         }
+
+        $notification->markAsSent($response->messageId);
+    }
+
+    private function handleTransientFailure(Notification $notification, string $reason): void
+    {
+        $notification->recordError($reason);
+
+        if ($notification->attempts >= self::MAX_ATTEMPTS) {
+            $notification->markAsFailed($reason);
+            return;
+        }
+
+        $notification->update(['status' => NotificationStatus::Pending]);
+
+        ScheduledDispatch::create([
+            'notification_id' => $notification->id,
+            'dispatch_at'     => now()->addMinutes(self::RETRY_DELAY_MINUTES),
+        ]);
     }
 }

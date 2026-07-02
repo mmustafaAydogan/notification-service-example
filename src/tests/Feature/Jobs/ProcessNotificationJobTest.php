@@ -5,6 +5,8 @@ namespace Tests\Feature\Jobs;
 use App\Contracts\NotificationProvider;
 use App\Enums\NotificationChannel;
 use App\Enums\NotificationStatus;
+use App\Exceptions\PermanentDeliveryException;
+use App\Exceptions\TransientDeliveryException;
 use App\Jobs\ProcessNotificationJob;
 use App\Models\Notification;
 use App\Models\ScheduledDispatch;
@@ -49,7 +51,7 @@ class ProcessNotificationJobTest extends TestCase
     public function test_marks_notification_as_failed_when_provider_returns_422(): void
     {
         $notification = $this->createPendingSms();
-        $this->fakeProvider()->onSend = fn () => throw new \RuntimeException('provider rejected payload', 422);
+        $this->fakeProvider()->onSend = fn () => throw new PermanentDeliveryException('provider rejected payload');
 
         $this->runJob($notification->id);
 
@@ -61,7 +63,7 @@ class ProcessNotificationJobTest extends TestCase
     public function test_reschedules_notification_when_provider_fails_transiently(): void
     {
         $notification = $this->createPendingSms();
-        $this->fakeProvider()->onSend = fn () => throw new \RuntimeException('connection timed out', 500);
+        $this->fakeProvider()->onSend = fn () => throw new TransientDeliveryException('connection timed out');
 
         $this->runJob($notification->id);
 
@@ -75,11 +77,27 @@ class ProcessNotificationJobTest extends TestCase
         $this->assertTrue($dispatch->dispatch_at->isFuture());
     }
 
+    public function test_reschedules_notification_when_provider_connection_fails(): void
+    {
+        $notification = $this->createPendingSms();
+        $this->fakeProvider()->onSend = fn () => throw new TransientDeliveryException('Provider connection error: cURL error 28');
+
+        $this->runJob($notification->id);
+
+        $notification->refresh();
+        $this->assertSame(NotificationStatus::Pending, $notification->status);
+        $this->assertSame(1, $notification->attempts);
+
+        $dispatch = ScheduledDispatch::where('notification_id', $notification->id)->first();
+        $this->assertNotNull($dispatch);
+        $this->assertTrue($dispatch->dispatch_at->isFuture());
+    }
+
     public function test_marks_failed_after_max_attempts_exhausted(): void
     {
         $notification = $this->createPendingSms();
         $notification->update(['attempts' => 4]); // next failure reaches MAX_ATTEMPTS (5)
-        $this->fakeProvider()->onSend = fn () => throw new \RuntimeException('still failing', 500);
+        $this->fakeProvider()->onSend = fn () => throw new TransientDeliveryException('still failing');
 
         $this->runJob($notification->id);
 

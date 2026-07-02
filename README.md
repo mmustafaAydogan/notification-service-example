@@ -35,9 +35,8 @@ Built for the Insider One Software Engineer Assessment 2026.
 This single command:
 1. Builds images and starts all containers (PHP, Nginx, MariaDB, Redis, RabbitMQ, worker, scheduler)
 2. Installs Composer dependencies
-3. Generates an `APP_KEY` if one is not yet set in `src/.env`
-4. Runs database migrations
-5. Generates the OpenAPI documentation served at `/api/documentation`
+3. Runs database migrations
+4. Generates the OpenAPI documentation served at `/api/documentation`
 
 The API is now available at **http://localhost:8080**.
 

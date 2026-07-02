@@ -4,6 +4,8 @@ namespace Tests\Feature\Services;
 
 use App\Contracts\NotificationProvider;
 use App\Enums\NotificationChannel;
+use App\Exceptions\PermanentDeliveryException;
+use App\Exceptions\TransientDeliveryException;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -31,12 +33,11 @@ class WebhookProviderTest extends TestCase
             && $request['recipient'] === 'user@example.com');
     }
 
-    public function test_send_throws_422_when_provider_rejects_payload(): void
+    public function test_send_throws_permanent_when_provider_rejects_payload(): void
     {
         Http::fake(['*' => Http::response('invalid', 422)]);
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionCode(422);
+        $this->expectException(PermanentDeliveryException::class);
 
         $this->provider()->send(NotificationChannel::Sms, [
             'recipient' => '+905551112233',
@@ -44,11 +45,23 @@ class WebhookProviderTest extends TestCase
         ]);
     }
 
-    public function test_send_throws_on_server_error(): void
+    public function test_send_throws_transient_on_server_error(): void
     {
         Http::fake(['*' => Http::response('boom', 500)]);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(TransientDeliveryException::class);
+
+        $this->provider()->send(NotificationChannel::Sms, [
+            'recipient' => '+905551112233',
+            'content'   => 'hi',
+        ]);
+    }
+
+    public function test_send_throws_transient_on_connection_failure(): void
+    {
+        Http::fake(fn () => throw new \Illuminate\Http\Client\ConnectionException('cURL error 28'));
+
+        $this->expectException(TransientDeliveryException::class);
 
         $this->provider()->send(NotificationChannel::Sms, [
             'recipient' => '+905551112233',

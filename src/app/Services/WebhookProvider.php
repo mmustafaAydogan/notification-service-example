@@ -5,7 +5,10 @@ namespace App\Services;
 use App\Contracts\NotificationProvider;
 use App\Contracts\ProviderResponse;
 use App\Enums\NotificationChannel;
+use App\Exceptions\PermanentDeliveryException;
+use App\Exceptions\TransientDeliveryException;
 use App\Models\OutgoingRequestLog;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response as HttpResponse;
 use Illuminate\Support\Facades\Http;
 use Throwable;
@@ -34,14 +37,18 @@ class WebhookProvider implements NotificationProvider
         $error = null;
 
         try {
-            $response = Http::timeout(5)->post($this->webhookUrl, $body);
+            try {
+                $response = Http::timeout(5)->post($this->webhookUrl, $body);
+            } catch (ConnectionException $e) {
+                throw new TransientDeliveryException('Provider connection error: ' . $e->getMessage(), previous: $e);
+            }
 
             if ($response->status() === 422) {
-                throw new \RuntimeException('Provider validation error: ' . $response->body(), 422);
+                throw new PermanentDeliveryException('Provider rejected payload: ' . $response->body());
             }
 
             if (!$response->successful()) {
-                throw new \RuntimeException('Provider error: HTTP ' . $response->status(), $response->status());
+                throw new TransientDeliveryException('Provider error: HTTP ' . $response->status());
             }
 
             return new ProviderResponse(
