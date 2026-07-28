@@ -2,8 +2,6 @@
 
 Event-driven, multi-channel (SMS / Email / Push) notification dispatch service with batch ingestion, idempotent writes, priority queue processing, per-channel rate limiting, and a pluggable external provider abstraction.
 
-Built for the Insider One Software Engineer Assessment 2026.
-
 ---
 
 ## Tech Stack
